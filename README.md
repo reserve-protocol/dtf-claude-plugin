@@ -4,16 +4,14 @@ Query and interact with [Reserve Protocol](https://reserve.org) Index DTFs direc
 
 ## Install
 
-```bash
-# In Claude Code
-/plugin install github:reserve-protocol/dtf-claude-plugin
-```
-
-Or test locally:
+In Claude Code, run these two commands:
 
 ```bash
-claude --plugin-dir ./dtf-plugin
+/plugin marketplace add reserve-protocol/dtf-claude-plugin
+/plugin install dtf-protocol@reserve-protocol
 ```
+
+That's it. The plugin persists across sessions.
 
 ## What It Does
 
@@ -36,7 +34,7 @@ All data is live from the blockchain via the [`@reserve-protocol/dtf-cli`](https
 
 ## Commands Available
 
-The plugin enables 18 CLI commands. See `skills/dtf/reference.md` for the full reference.
+The plugin enables 18 CLI commands. See `plugins/dtf-protocol/skills/dtf/reference.md` for the full reference.
 
 | Command | Description |
 |---------|-------------|
@@ -58,6 +56,34 @@ The plugin enables 18 CLI commands. See `skills/dtf/reference.md` for the full r
 | `deploy` | Deploy a new DTF |
 | `forum` | Governance forum |
 | `cache-clear` | Clear disk cache |
+
+## Project-Level Setup
+
+To auto-prompt teammates to install the plugin, add to your project's `.claude/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "reserve-protocol": {
+      "source": {
+        "source": "github",
+        "repo": "reserve-protocol/dtf-claude-plugin"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "dtf-protocol@reserve-protocol": true
+  }
+}
+```
+
+## Development
+
+Test locally without installing:
+
+```bash
+claude --plugin-dir ./plugins/dtf-protocol
+```
 
 ## Links
 

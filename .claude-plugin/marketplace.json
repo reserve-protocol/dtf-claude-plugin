@@ -1,0 +1,24 @@
+{
+  "name": "reserve-protocol",
+  "owner": {
+    "name": "Reserve Protocol",
+    "email": "dev@reserve.org"
+  },
+  "metadata": {
+    "description": "Plugins for interacting with Reserve Protocol"
+  },
+  "plugins": [
+    {
+      "name": "dtf-protocol",
+      "source": "./plugins/dtf-protocol",
+      "description": "Interact with Reserve Protocol Index DTFs — query baskets, monitor rebalances, check governance, and more via the DTF CLI.",
+      "version": "0.1.0",
+      "author": {
+        "name": "Reserve Protocol",
+        "email": "dev@reserve.org"
+      },
+      "license": "MIT",
+      "keywords": ["defi", "dtf", "index-fund", "reserve-protocol", "blockchain"]
+    }
+  ]
+}
