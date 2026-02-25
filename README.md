@@ -8,7 +8,7 @@ In Claude Code, run these two commands:
 
 ```bash
 /plugin marketplace add reserve-protocol/dtf-claude-plugin
-/plugin install dtf-protocol@reserve-protocol
+/plugin install dtf@reserve-protocol
 ```
 
 That's it. The plugin persists across sessions.
@@ -34,7 +34,7 @@ All data is live from the blockchain via the [`@reserve-protocol/dtf-cli`](https
 
 ## Commands Available
 
-The plugin enables 18 CLI commands. See `plugins/dtf-protocol/skills/dtf/reference.md` for the full reference.
+The plugin enables 18 CLI commands. See `plugins/dtf/skills/dtf/reference.md` for the full reference.
 
 | Command | Description |
 |---------|-------------|
@@ -72,7 +72,7 @@ To auto-prompt teammates to install the plugin, add to your project's `.claude/s
     }
   },
   "enabledPlugins": {
-    "dtf-protocol@reserve-protocol": true
+    "dtf@reserve-protocol": true
   }
 }
 ```
@@ -82,7 +82,7 @@ To auto-prompt teammates to install the plugin, add to your project's `.claude/s
 Test locally without installing:
 
 ```bash
-claude --plugin-dir ./plugins/dtf-protocol
+claude --plugin-dir ./plugins/dtf
 ```
 
 ## Links

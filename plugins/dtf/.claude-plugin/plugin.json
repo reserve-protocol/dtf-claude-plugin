@@ -1,5 +1,5 @@
 {
-  "name": "dtf-protocol",
+  "name": "dtf",
   "description": "Interact with Reserve Protocol Index DTFs — query baskets, monitor rebalances, check governance, and more via the DTF CLI.",
   "version": "0.1.0",
   "author": {
