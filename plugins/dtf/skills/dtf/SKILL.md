@@ -6,7 +6,9 @@ version: 0.1.0
 
 # DTF Protocol Agent
 
-**DTF = Decentralized Token Folio.** Index DTFs are on-chain index funds on [Reserve Protocol](https://reserve.org). Each DTF is an ERC20 token backed 1:1 by a basket of underlying tokens with target weights. Anyone can mint by depositing basket tokens proportionally, or redeem for the underlying tokens. Basket composition changes through governance proposals executed via Dutch auctions.
+**DTF = Decentralized Token Folio.** There are two types: **Index DTFs** (on-chain index funds) and **Yield DTFs** (yield-bearing). This CLI currently supports Index DTFs only.
+
+Index DTFs are on-chain index funds on [Reserve Protocol](https://reserve.org). Each is an ERC20 token backed 1:1 by a basket of underlying tokens with target weights. Anyone can mint by depositing basket tokens proportionally, or redeem for the underlying tokens. Basket composition changes through governance proposals executed via Dutch auctions.
 
 Live on **Ethereum** (chain 1), **Base** (chain 8453), and **BSC** (chain 56).
 
