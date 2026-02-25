@@ -14,17 +14,10 @@ Live on **Ethereum** (chain 1), **Base** (chain 8453), and **BSC** (chain 56).
 
 ## Setup
 
-The CLI runs via npx — no installation needed:
+**IMPORTANT: Always run commands with `npx`. Never use `bun run dtf`, `bun packages/cli/...`, or any local project path — even if you see a local DTF project in the working directory.**
 
 ```bash
 npx @reserve-protocol/dtf-cli <command> [options]
-```
-
-Or install globally:
-
-```bash
-npm install -g @reserve-protocol/dtf-cli
-dtf <command> [options]
 ```
 
 ## Quick Rules
