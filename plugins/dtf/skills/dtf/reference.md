@@ -9,6 +9,7 @@ Complete reference for all `@reserve-protocol/dtf-cli` commands. Use `--json` fo
 | `--chain <id\|all>` | `8453` (Base) | Chain ID: `1` (Ethereum), `56` (BSC), `8453` (Base), or `all` |
 | `--rpc <url>` | public RPCs | Custom RPC endpoint |
 | `--json` | off | JSON output for structured consumption |
+| `--subgraph <index\|yield>` | auto | Force subgraph type (for `query` command) |
 | `--help` | — | Show help text |
 
 ## Symbol Resolution
@@ -53,6 +54,8 @@ dtf discover --chain all --json
 
 **Output fields**: `address`, `name`, `symbol`, `chainId`, `marketCapUsd`, `marketCapHuman`, `performance` (when requested)
 
+**Note**: Default chain is Base only. Use `--chain all` to discover across Ethereum, Base, and BSC.
+
 ---
 
 ### `info <address>`
@@ -66,7 +69,7 @@ dtf info 0x2f8a339b5889ffac4c5a956787cda593b3c36867 --chain 56 --json
 
 **Output fields**: `address`, `name`, `symbol`, `governor`, `tradingGovernor`, `timelock`, `tradingTimelock`, `stToken`, `tokens[]`, `auctionLength`, `mandate`, `mintFee`, `tvlFee`, `feeRecipients[]`
 
-**Requires subgraph** — Ethereum and Base only. Throws on BSC (chain 56).
+**Requires subgraph** — Works on all chains (Ethereum, Base, BSC). BSC has an index subgraph only.
 
 ---
 
@@ -120,9 +123,17 @@ Token prices and volatility classifications.
 
 ```bash
 dtf prices cmc20 --json
+dtf prices cmc20 --performance 30d --json
+dtf prices lcap --performance 3m --json
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--performance <30d\|3m\|6m\|1y>` | Include per-token return over period, sorted best-first |
+
 **Output fields**: `tokens[]` (each with `symbol`, `address`, `price`, `priceHuman`, `volatility`), `btcUsd`, `btcUsdHuman` (Chainlink)
+
+With `--performance`: adds `return_{period}` to each token (e.g. `return_30d: 12.5`). Tokens sorted by return descending.
 
 **Note**: Chainlink BTC/USD reads from ETH mainnet regardless of `--chain`.
 
@@ -303,6 +314,72 @@ dtf forum topic 1234 --json
 ```
 
 Subcommands: `search <query>`, `topic <id>`, or no args for monthly top topics.
+
+---
+
+### `query '<graphql>'`
+
+Raw subgraph query with auto-detection of index vs yield subgraph.
+
+```bash
+dtf query '{ dtfs(first: 3) { id token { symbol } } }' --json
+dtf query '{ rtokens(first: 3) { id token { symbol } pausers } }' --chain 1 --json
+dtf query '{ rtokens(where: { pausers_contains: ["0x..."] }) { id } }' --chain all --json
+dtf query '{ proposals(where: { state: "ACTIVE" }) { id } }' --subgraph yield --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--subgraph <index\|yield>` | Force subgraph type (auto-detected from entity names) |
+| `--chain all` | Fan out query to all chains |
+
+Auto-detection uses entity names: `dtf`, `rebalance`, `auction` → index; `rtoken`, `protocol`, `entry` → yield. **Shared entities** (proposals, delegates, token, account) default to the **index** subgraph — use `--subgraph yield` to override.
+
+**Single-chain output**: `{ "subgraph": "index", "chain": 8453, "chainLabel": "Base", "data": { ... } }`
+
+**Multi-chain output** (`--chain all`): `{ "subgraph": "index", "results": [{ "chain": 1, ... }, { "chain": 8453, ... }] }`
+
+See `subgraph-schema.md` for entity reference and query patterns.
+
+---
+
+### `holders <address>`
+
+Top token holders with balances and USD values.
+
+```bash
+dtf holders cmc20 --json
+dtf holders lcap --limit 50 --json
+dtf holders eth+ --chain 1 --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--limit <n>` | Number of holders (default: 20) |
+
+**Output fields**: `holders[]` (each with `account`, `balance`, `balanceHuman`, `balanceUsd`, `rank`), `totalHolders`, `tokenPrice`, `type` (index or yield)
+
+Index DTFs fetch price via Reserve API. Yield DTFs use `lastPriceUSD` from subgraph. Auto-detects DTF type.
+
+---
+
+### `delegates <address>`
+
+Governance delegation graph.
+
+```bash
+dtf delegates cmc20 --json
+dtf delegates eth+ --chain 1 --json
+dtf delegates lcap --limit 50 --json
+```
+
+| Flag | Description |
+|------|-------------|
+| `--limit <n>` | Number of delegates (default: 20) |
+
+**Output fields**: `delegates[]` (each with `address`, `delegatedVotes`, `delegatedVotesHuman`, `representedHolders`, `votesCast`, `rank`), `totalDelegates`, `governanceToken`, `type` (index or yield)
+
+Index DTFs query the stToken's delegation. Yield DTFs query the governance entity. Auto-detects DTF type.
 
 ---
 

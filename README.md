@@ -34,7 +34,7 @@ All data is live from the blockchain via the [`@reserve-protocol/dtf-cli`](https
 
 ## Commands Available
 
-The plugin enables 18 CLI commands. See `plugins/dtf/skills/dtf/reference.md` for the full reference.
+The plugin enables 21 CLI commands. See `plugins/dtf/skills/dtf/reference.md` for the full reference.
 
 | Command | Description |
 |---------|-------------|
@@ -53,6 +53,9 @@ The plugin enables 18 CLI commands. See `plugins/dtf/skills/dtf/reference.md` fo
 | `earn` | Yield opportunities |
 | `revenue` | Revenue breakdown |
 | `rsr-burns` | RSR burn analytics |
+| `query` | Raw subgraph query |
+| `holders` | Top token holders |
+| `delegates` | Governance delegation graph |
 | `deploy` | Deploy a new DTF |
 | `forum` | Governance forum |
 | `cache-clear` | Clear disk cache |
