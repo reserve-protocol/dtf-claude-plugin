@@ -10,6 +10,7 @@ Complete reference for all `@reserve-protocol/dtf-cli` commands. Use `--json` fo
 | `--rpc <url>` | public RPCs | Custom RPC endpoint |
 | `--json` | off | JSON output for structured consumption |
 | `--subgraph <index\|yield>` | auto | Force subgraph type (for `query` command) |
+| `--sort <mcap\|fee\|performance>` | `mcap` | Sort discover results |
 | `--help` | — | Show help text |
 
 ## Symbol Resolution
@@ -41,20 +42,49 @@ If a partial name matches multiple DTFs, the CLI lists all matches and asks for 
 List DTFs across chains with market data.
 
 ```bash
-dtf discover --json
-dtf discover --chain 8453 --json
+dtf discover --json                           # Index DTFs (default)
+dtf discover --type yield --json              # Yield DTFs ($210M+ TVL)
+dtf discover --all --json                     # Both index + yield
+dtf discover --chain all --json               # All chains
 dtf discover --performance 3m --limit 10 --json
-dtf discover --chain all --json
 ```
 
 | Flag | Description |
 |------|-------------|
+| `--type <index\|yield>` | DTF type filter (default: index). Use `--all` for both. |
 | `--performance <30d\|3m\|6m\|1y>` | Include return over period |
 | `--limit <n>` | Limit number of results |
+| `--sort <mcap\|fee\|performance>` | Sort results (default: mcap descending) |
 
-**Output fields**: `address`, `name`, `symbol`, `chainId`, `marketCapUsd`, `marketCapHuman`, `performance` (when requested)
+**Unified output** (same schema for index AND yield — discriminate via `dtfType`): `dtfType`, `address`, `name`, `symbol`, `chainId`, `chainLabel`, `price`, `priceHuman`, `marketCap` (null if unavailable), `marketCapHuman`, `tvl` (null for yield), `tvlFeeAnnualPercent` (null for yield), `tvlFeeAnnualPercentHuman` (null for yield), `return7d` (null for yield), `return7dPercent` (human-readable with +/- sign), `stakingTvlUsd` (null if no staking), `stakingApr` (null if no staking), `stakingAprPercent`, `tokens[]` (empty for yield), `mandate` (truncated to 100 chars with "...", null if absent), `investUrl`
 
-**Note**: Default chain is Base only. Use `--chain all` to discover across Ethereum, Base, and BSC.
+- `investUrl` — Direct link to the DTF on Register (app.reserve.org). Always use this when directing users to invest.
+- **0% APR filtered out**: Yield entries with `stakingApr: 0` are excluded (staking vault exists but no rewards — misleading).
+- **`--all` deduplication**: When showing both types, yield staking data (`stakingTvlUsd`, `stakingApr`) is merged onto the corresponding index entry. No duplicate rows.
+
+**Sort modes**: `mcap` (market cap, descending — default), `fee` (TVL fee, ascending — cheapest first), `performance` (return, descending — best first, requires `--performance`).
+
+**Note**: Default type is index only. Use `--type yield` to see Index DTFs with staking rewards, or `--all` for merged view.
+
+---
+
+### `compare <dtf1> <dtf2> [dtf3...]`
+
+Side-by-side DTF comparison with basket overlap analysis.
+
+```bash
+dtf compare lcap bgci --json
+dtf compare cmc20 lcap bgci --chain 8453 --json
+```
+
+**Output**: `comparison` (`dtfCount`, `totalUniqueTokens`, `overlapTokenCount`, `addressOverlapPercent`, `totalUniqueCanonical`, `canonicalOverlapCount`, `canonicalOverlapPercent`), `mintFees` (per-DTF mint fee % from RPC), `tvlFees` (per-DTF annual TVL fee % from RPC), `dtfs[]` (each with `address`, `name`, `symbol`, `chainId`, `chainLabel`, `investUrl`, `price`, `marketCap`, `mintFee`, `mintFeePercent`, `tvlFeeAnnualPercent`, `tvlFeeAnnualPercentHuman`, `totalSupply`, `tokenCount`, `hhi`, `effectiveN`, `tokens[]` each with `canonicalAsset`), `pairs[]` (each pair with `dtf1`, `dtf1Symbol`, `dtf2`, `dtf2Symbol`, `sharedTokens`, `overlapWeight`, `economicOverlap`), `weightMatrix[]` (per canonical asset: `asset`, `weights` per DTF, `maxDelta` sorted by largest difference), `sharedTokens[]`, `sharedCanonicalAssets[]`
+- **Fees**: `mintFee`/`mintFeePercent` (one-time entry fee from RPC) AND `tvlFeeAnnualPercent`/`tvlFeeAnnualPercentHuman` (annual management fee from RPC). `mintFees` and `tvlFees` top-level objects for quick side-by-side comparison.
+- **Weight matrix**: `weightMatrix[]` shows per-canonical-asset weight comparison across all DTFs, sorted by largest weight delta. E.g. `{ asset: "BTC", weights: { CMC20: 70.13, LCAP: 45.00 }, maxDelta: 25.13 }`. Only includes assets shared by 2+ DTFs.
+- **Cross-chain economic overlap**: BTCB (BSC), cbBTC (Base), WBTC (ETH) all resolve to canonical "BTC". `economicOverlap` in pairs catches this; `overlapWeight` uses strict address matching only.
+- Token symbols resolved via RPC multicall when API doesn't return them
+- Each DTF includes `name` and `symbol` from registry
+
+**Overlap metrics**: HHI (Herfindahl-Hirschman Index) measures concentration — lower = more diversified. `effectiveN` = 1/HHI = effective number of holdings. `overlapWeight` = sum of minimum weights for shared tokens (higher = more correlated).
 
 ---
 
@@ -67,7 +97,13 @@ dtf info cmc20 --json
 dtf info 0x2f8a339b5889ffac4c5a956787cda593b3c36867 --chain 56 --json
 ```
 
-**Output fields**: `address`, `name`, `symbol`, `governor`, `tradingGovernor`, `timelock`, `tradingTimelock`, `stToken`, `tokens[]`, `auctionLength`, `mandate`, `mintFee`, `tvlFee`, `feeRecipients[]`
+**Output fields**: `type`, `name`, `symbol`, `dtf` (address), `chainId`, `chainLabel`, `price`, `priceHuman`, `marketCap`, `marketCapHuman`, `tvl`, `tvlHuman`, `totalSupply`, `investUrl`, `ownerGovernance`, `tradingGovernance`, `stTokenGovernance`, `stToken`, `tokens[]`, `auctionLength`, `auctionLengthHuman`, `mandate` (null if absent), `tvlFeeAnnualPercent`, `tvlFeeAnnualPercentHuman`, `mintFeePercent`, `mintFeePercentHuman`, `bidsEnabled`, `rebalanceControl`, `auctionLaunchers[]`, `brandManagers[]`
+
+- `price`/`marketCap`/`tvl` — Market data from Reserve API. For Index DTFs, TVL = marketCap (all assets locked). Null if API unavailable.
+- `tvlFeeAnnualPercent` — Annualized TVL fee (e.g. `1.50` = 1.5%/year). `tvlFeeAnnualPercentHuman` — e.g. `"1.50%"`.
+- `mintFeePercent` — Mint fee as number (e.g. `0.30`). `mintFeePercentHuman` — e.g. `"0.30%"`.
+- `investUrl` — Direct link to the DTF on Register app
+- `bidsEnabled` — Whether permissionless auction bids are enabled
 
 **Requires subgraph** — Works on all chains (Ethereum, Base, BSC). BSC has an index subgraph only.
 
@@ -82,7 +118,9 @@ dtf basket cmc20 --json
 dtf basket lcap --json
 ```
 
-**Output fields**: `tokens[]` (each with `symbol`, `address`, `balance`, `balanceHuman`, `weight`, `weightPercent`, `usdValue`, `usdValueHuman`), `totalSupply`, `tvl`, `tvlHuman`, `sharePrice`, `sharePriceHuman`
+**Index output**: `type: 'index'`, `tokens[]` (each with `symbol`, `address`, `decimals`, `price`, `weight`, `weightPercent`, `amount`, `amountRaw`, `value`), `totalSupply`, `tvl`, `sharePrice`, `marketCap`, `concentration` (`hhi`, `effectiveN`, `top3Weight`, `top5Weight`, `isConcentrated`)
+
+**Yield output**: `type: 'yield'`, `sharePrice`, `tvl`, `totalSupply` (from subgraph, null if unavailable), `tokens[]` (each with `symbol`, `address`, `targetUnit`, `uoaSharePercent`, `usdValue`)
 
 ---
 
@@ -94,7 +132,7 @@ Fee information: pending fees, recipients, fee rates.
 dtf fees cmc20 --json
 ```
 
-**Output fields**: `pendingFees` (`total`, `folio`, `dao`, all with `Human` variants), `mintFee`, `mintFeeHuman`, `tvlFee`, `tvlFeeHuman`, `recipients[]` (each with `address`, `portion`, `portionPercent`)
+**Output fields**: `dtf`, `type`, `chainId`, `chainLabel`, `investUrl`, `pending` (`total`, `totalHuman`, `folio`, `folioHuman`, `dao`, `daoHuman`), `mintFeePercent`, `mintFeePercentHuman`, `tvlFeeAnnualPercent`, `tvlFeeAnnualPercentHuman`, `recipients[]` (each with `recipient`, `recipientLabel`, `portion`, `portionPercent`)
 
 ---
 
@@ -111,9 +149,17 @@ dtf quote cmc20 50 --action redeem --json
 |------|---------|-------------|
 | `--action <mint\|redeem>` | `mint` | Quote type |
 
-**Mint output**: `shares`, `sharesHuman`, `fee`, `feeHuman`, `tokens[]` (each with `symbol`, `amount`, `amountHuman` — amounts needed to deposit)
+**Mint output**: `dtf`, `type`, `chainId`, `chainLabel`, `investUrl`, `action: 'mint'`, `shares`, `sharesHuman`, `mintFee` (raw bigint string), `mintFeePercent` (number), `mintFeePercentHuman` (string like "1.50%"), `minSharesOut`, `slippageBps`, `slippagePercent`, `totalUsd`, `totalUsdHuman`, `navPerShare`, `navPerShareHuman`, `pricesAvailable`, `tokens[]` (each with `address`, `symbol`, `amount`, `amountHuman`, `usdValue` — amounts needed to deposit)
 
-**Redeem output**: `shares`, `sharesHuman`, `tokens[]` (each with `symbol`, `amount`, `amountHuman` — amounts received back)
+**Redeem output**: `dtf`, `type`, `chainId`, `chainLabel`, `investUrl`, `action: 'redeem'`, `shares`, `sharesHuman`, `totalUsd`, `totalUsdHuman`, `navPerShare`, `navPerShareHuman`, `pricesAvailable`, `tokens[]` (each with `address`, `symbol`, `amount`, `amountHuman`, `usdValue` — amounts received back)
+
+- `investUrl` — Direct link to the DTF issuance page on Register. Use this to direct users to mint/redeem.
+- `totalUsd` / `totalUsdHuman` — Total USD cost/value of the quote
+- `mintFee` — Raw bigint mint fee amount (string). `mintFeePercent` — As number (1.5), `mintFeePercentHuman` — As string ("1.50%")
+- `minSharesOut` — Minimum shares after slippage (for mint transactions)
+- `slippageBps` / `slippagePercent` — Default 1% slippage protection
+- `pricesAvailable` — Whether USD price data was available (false = prices API failed, USD values are 0)
+- Yield DTFs include token `symbol` and `depositUoAHuman` fields
 
 ---
 
@@ -131,23 +177,25 @@ dtf prices lcap --performance 3m --json
 |------|-------------|
 | `--performance <30d\|3m\|6m\|1y>` | Include per-token return over period, sorted best-first |
 
-**Output fields**: `tokens[]` (each with `symbol`, `address`, `price`, `priceHuman`, `volatility`), `btcUsd`, `btcUsdHuman` (Chainlink)
+**Output fields**: `tokens[]` (each with `symbol`, `address`, `price`, `volatility`, `auctionPriceError`, `proposalPriceError`), `btcUsd` (Chainlink)
 
-With `--performance`: adds `return_{period}` to each token (e.g. `return_30d: 12.5`). Tokens sorted by return descending.
+With `--performance`: adds `return_{period}` to each token (e.g. `return_30d: 12.5`). Tokens sorted by return descending. Also adds `totalReturn_{period}` — weighted portfolio return (yield DTFs: weighted by UoA share; index DTFs: equal-weight approximation).
 
-**Note**: Chainlink BTC/USD reads from ETH mainnet regardless of `--chain`.
+Works for both index and yield DTFs. **Note**: Chainlink BTC/USD reads from ETH mainnet regardless of `--chain`.
 
 ---
 
 ### `governance <address>`
 
-Governance settings for both governors.
+Governance settings for all three governors (owner, trading, lock/stToken).
 
 ```bash
 dtf governance cmc20 --json
 ```
 
-**Output fields**: For each governor (owner + trading): `votingDelay`, `votingDelayHuman`, `votingPeriod`, `votingPeriodHuman`, `proposalThreshold`, `proposalThresholdHuman`, `quorumNumerator`, `quorumDenominator`, `quorumPercent`, `timelockMinDelay`, `timelockMinDelayHuman`
+**Index output**: For each governor (owner + trading + stToken/lock): `votingDelay`, `votingDelayHuman`, `votingPeriod`, `votingPeriodHuman`, `proposalThreshold`, `proposalThresholdHuman`, `quorumNumerator`, `quorumDenominator`, `quorumPercent`, `timelockMinDelay`, `timelockMinDelayHuman`
+
+**Yield output**: `guardians[]`, `delegateStats` (`currentDelegates`, `totalDelegates`, `proposalsQueued`, `proposalsExecuted`), `governances[]` (each with `label`, `governor`, `timelock`, `votingDelay`, `votingDelayHuman`, `votingPeriod`, `votingPeriodHuman`, `quorumPercent`, `executionDelay`, `executionDelayHuman`)
 
 ---
 
@@ -164,9 +212,13 @@ dtf staking cmc20 --account 0xYOUR_ADDRESS --json
 |------|-------------|
 | `--account <address>` | Show account-specific balances |
 
-**Output fields**: `stToken`, `underlying`, `unstakingDelay`, `unstakingDelayHuman`, `rewardTokens[]`
+**Index output**: `stToken`, `underlyingAsset`, `rewardTokens[]`, `unstakingDelay`, `unstakingDelayHuman`, `earn` (when available: `apr`, `lockedAmountUsd`, `avgDailyRewardAmountUsd`)
 
-With `--account`: adds `balance`, `balanceHuman`, `lockedBalance`, `lockedBalanceHuman`, `withdrawable`, `withdrawableHuman`
+With `--account`: adds `balance`, `balanceHuman`, `delegatee`, `votingPower`, `votingPowerHuman`, `maxWithdraw`, `maxWithdrawHuman`
+
+**Yield output**: `stRSR`, `exchangeRate`, `exchangeRateHuman`, `totalSupply`, `totalSupplyHuman`, `unstakingDelay`, `unstakingDelayHuman`
+
+With `--account`: adds `balance`, `balanceHuman`, `votingPower`, `votingPowerHuman`, `delegatee`
 
 ---
 
@@ -178,7 +230,9 @@ Role holders for the DTF.
 dtf roles cmc20 --json
 ```
 
-**Output fields**: `roles[]` (each with `address`, `roles[]` listing role names like `ADMIN`, `AUCTION_LAUNCHER`, `BRAND_MANAGER`, `REBALANCE_MANAGER`)
+**Index output**: `roles[]` (each with `address`, `roles[]` listing role names like `ADMIN`, `AUCTION_LAUNCHER`, `BRAND_MANAGER`, `REBALANCE_MANAGER`)
+
+**Yield output**: `owners[]`, `pausers[]`, `freezers[]`, `longFreezers[]` — flat arrays of addresses per role
 
 ---
 
@@ -193,23 +247,28 @@ dtf proposals --json
 dtf proposals --chain 1 --json
 ```
 
-**Output fields**: `proposals[]` (each with `id`, `proposer`, `state`, `stateHuman`, `startBlock`, `endBlock`, `forVotes`, `againstVotes`, `abstainVotes`, `actions[]` with decoded calldata)
+**Output fields**: `proposals[]` (each with `id`, `proposer`, `state`, `stateHuman`, `startBlock`, `endBlock`, `forVotes`, `againstVotes`, `abstainVotes`, `actions[]` with decoded calldata, `type` index or yield)
 
-Decodes calldata into human-readable function calls with parameter names.
+Decodes calldata into human-readable function calls with parameter names. Works for both index and yield DTFs. Without an address, fetches proposals from both subgraphs.
 
 ---
 
-### `rebalance <address>`
+### `rebalance <address>` | `rebalance --all`
 
-Active rebalance state.
+Active rebalance state (single DTF) or batch scan (all DTFs).
 
 ```bash
-dtf rebalance cmc20 --json
+dtf rebalance cmc20 --json              # Single DTF
+dtf rebalance --all --json              # Scan all known DTFs for active rebalances
+dtf rebalance --all --chain 8453 --json # Scan Base DTFs only
 ```
 
-**Output fields**: `nonce`, `priceControl`, `isActive`, `isExpired`, `isInLauncherWindow`, `launcherWindowEnd`, `availableUntil`, `tokens[]` (each with `symbol`, `address`, `weight` low/spot/high, `price` low/high, `inRebalance`), `auction` (if active: `auctionId`, `sellToken`, `buyToken`, `sellAmount`, `buyAmount`, `startPrice`, `endPrice`)
+**Single DTF output**: `nonce`, `priceControl`, `bidsEnabled`, `isActive`, `isExpired`, `isInLauncherWindow`, `isInCommunityWindow`, `statusLabel`, `timeRemaining`, `tokens[]` (each with `symbol`, `address`, `weight` low/spot/high, `price` low/high, `inRebalance`), `auction` (if active: `auctionId`, `startTime`, `endTime`, `isActive`). Returns `null` if no rebalance has ever started.
 
-Returns `null` if no rebalance has ever started.
+**`--all` output**: `scan` (`chains`, `dtfsScanned`, `activeRebalances`, `liveAuctions`), `dtfs[]` (each with `symbol`, `name`, `address`, `chainId`, `status` (active/expired/none/error), `nonce`, `window`, `hasAuction`, `bidsEnabled`)
+- `bidsEnabled: true` = permissionless (any bot can fill). `bidsEnabled: false` = trusted fillers only (CoW Swap).
+
+**Yield output**: `rebalanceType: 'automatic'`, `backingPercent`, `message`. Yield DTFs rebalance automatically — no manual state.
 
 ---
 
@@ -234,14 +293,28 @@ dtf history cmc20 --nonce 3 --json
 
 ### `earn`
 
-Vote-lock yield opportunities across all chains.
+Vote-lock yield opportunities across all chains with risk scoring.
 
 ```bash
 dtf earn --json
 dtf earn --chain 1 --json
+dtf earn --underlying RSR --json
+dtf earn --sort tvl --json
+dtf earn --sort risk --json
 ```
 
-**Output fields**: `positions[]` (each with `token`, `underlying`, `chainId`, `apr`, `aprPercent`, `lockedAmount`, `lockedAmountUsd`, `rewards[]`, `dtfs[]`)
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--underlying <symbol>` | — | Filter by underlying token (e.g. RSR, WETH) |
+| `--sort <apr\|tvl\|risk>` | `apr` | Sort: APR descending, TVL descending, or risk (low first) |
+
+**Output fields**: `type: 'vote-lock'`, `count`, `positions[]` (each with `vault`, `vaultAddress`, `underlying`, `underlyingAddress`, `chainId`, `chainLabel`, `investUrl`, `apr`, `aprPercent`, `lockedAmountUsd`, `lockedAmountUsdHuman`, `avgDailyRewardAmountUsd`, `avgDailyRewardHuman`, `rewardTokens[]`, `dtfCount`, `dtfSymbols[]`, `riskTier`, `riskFactors[]`)
+
+- `investUrl` — Link to the primary DTF's governance/staking page on Register
+
+**Risk tiers** (`low`, `medium`, `high`) based on weighted scoring: TVL size (critical), APR sustainability (critical), chain risk (moderate). `riskFactors` explains each flag. 0% APR positions are filtered out.
+
+**`--sort risk`**: Groups by risk tier (low first), then by APR descending within each tier.
 
 ---
 
@@ -258,9 +331,11 @@ dtf revenue --all --json
 |------|-------------|
 | `--all` | Ecosystem-wide revenue |
 
-**Single DTF output**: `tvlFeeRevenue`, `mintFeeRevenue`, `totalRevenue`, all with `Human` and `Usd` variants
+**Single DTF output** (index only): `dtf`, `type: 'index'`, `chainId`, `chainLabel`, `investUrl`, `symbol`, `price`, `revenuePeriod: 'cumulative'`, `revenuePeriodNote`, `revenue` (`totalUsd`, `totalUsdHuman`, `protocolUsd`, `protocolUsdHuman`, `governanceUsd`, `governanceUsdHuman`, `externalUsd`, `externalUsdHuman`, `totalShares`, `protocolShares`, `governanceShares`, `externalShares`), `fees` (`mintFeePercent`, `mintFeePercentHuman`, `tvlFeeAnnualPercent`, `tvlFeeAnnualPercentHuman`)
 
-**Ecosystem output**: `dtfs[]` with per-DTF revenue, `totals`
+**Yield DTFs**: Returns a clear message directing to `dtf fees` and `dtf info` instead. Revenue model differs for yield DTFs (automatic yield distribution vs fee accrual).
+
+**Ecosystem output**: `type: 'index'`, `revenuePeriod: 'cumulative'`, `revenuePeriodNote`, `note`, `ecosystem` (`totalUsd`, `protocolUsd`, `governanceUsd`, `externalUsd`, `*Percent`, `dtfCount`, `topDtfs[]`), `fees` (`weightedMintFeePercent`, `weightedMintFeePercentHuman`, `weightedTvlFeePercent`, `weightedTvlFeePercentHuman`, `averageMintFeePercent`, `averageMintFeePercentHuman`, `averageTvlFeePercent`, `averageTvlFeePercentHuman`)
 
 ---
 
@@ -357,7 +432,10 @@ dtf holders eth+ --chain 1 --json
 |------|-------------|
 | `--limit <n>` | Number of holders (default: 20) |
 
-**Output fields**: `holders[]` (each with `account`, `balance`, `balanceHuman`, `balanceUsd`, `rank`), `totalHolders`, `tokenPrice`, `type` (index or yield)
+**Output fields**: `holders[]` (each with `account`, `balance`, `balanceHuman`, `balanceUsd`, `supplyPercent`, `rank`), `totalHolders`, `totalSupply`, `tokenPrice`, `type` (index or yield), `concentration` (`top5Percent`, `top10Percent`)
+
+- `supplyPercent` — Holder's % of total supply
+- `concentration` — Top 5 and top 10 holders' combined supply share
 
 Index DTFs fetch price via Reserve API. Yield DTFs use `lastPriceUSD` from subgraph. Auto-detects DTF type.
 
@@ -415,3 +493,6 @@ Common errors:
 4. **Check `isActive` in rebalance** before reporting auction state
 5. **Use `*Human` fields** for user-facing responses, raw fields for calculations
 6. **Add disclaimer** when discussing investment recommendations: "Not financial advice. DYOR!"
+7. **Check `type` field** in JSON output — every command includes `type` (`'index'`, `'yield'`, or `'vote-lock'`) for routing
+8. **Use `tokens[]`** as the normalized array in quote output — works for both index and yield. Old fields (`amounts`, `deposit`, `withdrawal`) kept for backwards compatibility
+9. **Use `earn --sort risk`** for safer recommendations — low risk first, filtered by TVL/APR sustainability
