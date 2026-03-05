@@ -84,6 +84,15 @@ dtf prices cmc20 --performance 30d --json
 
 Flags: `--performance <30d|3m|6m|1y>` — per-token historical return over period (sorted best-first). Also computes `totalReturn_<period>` (weighted portfolio return).
 
+With `--performance`, the `performance` object includes:
+- `var95Day` / `var95DayPercent` — 95% daily Value at Risk (worst expected daily loss)
+- `beta` — sensitivity to BTC moves (>1 = amplified, <1 = dampened, null if BTC data unavailable)
+- `trackingErrorVsBtc` — annualized tracking error vs BTC (lower = tracks more closely). Most DTFs don't target BTC — this measures crypto-market divergence, not mandate compliance.
+- `correlationPairs` — pairwise Pearson correlation of basket token returns (from historical basket data)
+- `dataPoints` — number of price observations (caveat short windows)
+- `signals` — price risk signals array (fires on VaR > 10%, beta > 1.5, drawdown > 30%)
+- Existing: `maxDrawdown`, `volatilityAnnualized`, `sharpeRatio`, `benchmarkReturn`, `alpha`
+
 Works for both index and yield DTFs. Chainlink reads are ETH mainnet only.
 
 **`quote <address> <amount>`** — Mint or redeem quotes with exact token amounts and USD totals
@@ -91,10 +100,24 @@ Works for both index and yield DTFs. Chainlink reads are ETH mainnet only.
 ```bash
 dtf quote cmc20 100 --json
 dtf quote cmc20 50 --action redeem --json
-dtf quote eth+ 100 --chain 1 --json  # yield DTF quote with symbols
+dtf quote eth+ 100 --chain 1 --json     # yield DTF quote with symbols
+dtf quote cmc20 --amount 500 --usd --json  # interpret 500 as USD, compute shares
 ```
 
-Flags: `--action <mint|redeem>` (default: mint). Output includes `totalUsd` (total cost), per-token `usdValue`, and `pricesAvailable` flag.
+Flags: `--action <mint|redeem>` (default: mint), `--usd` (interpret `--amount` as USD, auto-compute shares). Output includes `totalUsd` (total cost), per-token `usdValue`, and `pricesAvailable` flag. With `--usd`, output includes `inputUsd` field.
+
+JSON output includes `positionImpact` (when TVL available):
+- `percentOfTvl` — what percentage of current TVL this transaction represents
+- `percentOfTvlHuman` — e.g. "35.8%"
+- `note` — human-readable context
+- null if TVL unavailable
+
+JSON output includes `dexSlippage` (advisory Zapper estimate):
+- `priceImpact` / `priceImpactPercent` — estimated DEX price impact
+- `truePriceImpact` — net impact (negative = favorable)
+- `gas` — estimated gas cost
+- `note` — context that DTF mint/redeem uses protocol directly, not DEX
+- null if Zapper is unavailable for the chain/pair
 
 ### Fees & Revenue
 
@@ -213,7 +236,15 @@ dtf delegates cmc20 --json
 dtf delegates eth+ --chain 1 --json
 ```
 
-Shows rank, delegate address, voting power, holders represented, votes cast.
+Shows rank, delegate address, voting power (`votingPowerPercent`), holders represented, votes cast. JSON includes `totalVotingSupply`, `nakamotoCoefficient` (minimum delegates for 50% voting power), and `nakamotoCoefficientNote`.
+
+**`compare <addr1> <addr2>`** — Side-by-side DTF comparison
+
+```bash
+dtf compare cmc20 lcap --json
+```
+
+Compares basket composition, fees, market cap, and concentration metrics between two DTFs. Works across chains.
 
 ### Other
 
@@ -299,6 +330,56 @@ All commands support `--json`. Output includes human-readable fields:
 ```
 
 Fields suffixed with `Human`, `ISO`, or `Percent` are for display. Raw bigint fields are strings.
+
+**Null values** mean "not applicable to this DTF type" (e.g., `backing: null` on index DTFs, `tvlFeeAnnualPercent: null` on yield DTFs). Zero means the data was fetched and is actually zero.
+
+## Risk Signals
+
+Commands that return `--json` include a `signals` array with pre-computed risk flags:
+
+```json
+{
+  "signals": [
+    { "type": "concentration", "severity": "warning", "message": "BTC dominates basket at 60.0% (>50%)" },
+    { "type": "liquidity", "severity": "critical", "message": "Very low TVL ($5,000) — below $10K" }
+  ]
+}
+```
+
+Signal types: `concentration`, `liquidity`, `fee`, `operational`, `holder-concentration`, `price`
+Severity levels: `info`, `warning`, `critical`
+Commands with signals: `basket`, `info`, `holders`, `fees`, `discover`, `earn`, `prices` (in `performance.signals`)
+
+**ALWAYS surface critical and warning signals.** The CLI pre-computes them — no manual threshold checks needed.
+
+## Performance & Risk Metrics
+
+With `prices --performance <period>`, output includes portfolio-level risk metrics:
+- `maxDrawdown` / `maxDrawdownPercent` — worst peak-to-trough loss
+- `volatilityAnnualized` — annualized price volatility
+- `sharpeRatio` — risk-adjusted return (excess return / volatility)
+- `var95Day` / `var95DayPercent` — 95% daily VaR (worst expected daily loss at 95% confidence)
+- `beta` — sensitivity to BTC (>1 = amplifies, <1 = dampens, null if unavailable)
+- `correlationPairs` — `[{ pair: [addr1, addr2], correlation: 0.92 }]` from basket timeseries
+- `dataPoints` — number of observations (caveat: 30d = ~31 points, short windows have wider error bars)
+- `alpha` / `alphaPercent` — return above BTC benchmark
+- `benchmarkReturn` — BTC return over same period
+
+Price signal type `price` fires on: VaR > 10% (warning), beta > 1.5 (warning), beta < 0.5 (info), drawdown > 30% (warning).
+
+**Tracking error** measures how closely a DTF tracks its BTC benchmark. Lower = tighter tracking. Values: 0-0.10 = tight, 0.10-0.30 = moderate, >0.30 = significant divergence. Always present when `--performance` and BTC data available.
+
+## Basket Concentration Metrics
+
+Index baskets include `concentration` metrics in `basket --json`:
+- `hhi` — Herfindahl-Hirschman Index (0-1, >0.25 = concentrated)
+- `effectiveN` — Equivalent number of equal-weight tokens (1/HHI)
+- `top3Weight` / `top5Weight` — Top 3/5 token weight sum
+- `isConcentrated` — Boolean flag
+
+## Fee Recipient Labels
+
+`fees --json` includes `recipientLabel` per fee recipient, mapping addresses to governance roles (e.g., "DAO Treasury", "Protocol Fee").
 
 ## History & Naming
 
@@ -614,10 +695,12 @@ When returning data to users, ALWAYS follow these rules:
 ### 1. Never Dump Raw JSON
 Synthesize CLI output into human-readable answers. Build comparison tables when comparing DTFs. Highlight the key numbers, not the full JSON blob.
 
-### 2. Flag Concentration Risk
-- Basket: If any token is >50% weight, warn: "This basket is concentrated — [X]% in [TOKEN]"
-- Holders: If top holder is >30% of supply, warn: "Top holder owns [X]% — high concentration risk"
-- Position sizing: If user's position would be >10% of TVL, warn about market impact
+### 2. Surface Risk Signals
+Check the `signals` array in JSON output. Surface all `critical` and `warning` signals to the user. The CLI pre-computes concentration, liquidity, fee, operational, and **price risk** flags — no manual threshold checks needed.
+
+**Price signals** (in `prices --performance`): When `performance.signals` contains warnings (VaR > 10%, beta > 1.5, drawdown > 30%), explicitly warn the user about the risk before presenting numbers.
+
+**Position impact** (in `quote`): When `positionImpact.percentOfTvl > 10%`, warn about concentration risk ("Your position would be X% of the fund — large positions affect liquidity and exit timing").
 
 ### 3. Include Register Deep Links
 Every actionable answer should include the direct link to app.reserve.org. For buying: link to issuance page and recommend Zap. For governance: link to governance page.
@@ -702,7 +785,7 @@ import {
   readUnstakingDelay,
   fetchDtfDiscover,
   fetchDtfPrice,
-  fetchTokenPrice,
+  fetchTokenPrices,
   querySubgraph,
   D18,
   type DtfOnchainConfig,
