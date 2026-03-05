@@ -1,7 +1,7 @@
 {
   "name": "dtf",
   "description": "Interact with Reserve Protocol Index DTFs — query baskets, monitor rebalances, check governance, and more via the DTF CLI.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": {
     "name": "Reserve Protocol",
     "email": "dev@reserve.org"
